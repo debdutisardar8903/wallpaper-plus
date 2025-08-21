@@ -1,0 +1,453 @@
+{
+  "rules": {
+    // Users collection - stores user profile data
+    "users": {
+      "$uid": {
+        // Only authenticated users can access their own data
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        
+        // Validate user profile structure
+        ".validate": "newData.hasChildren(['username', 'firstName', 'lastName', 'email'])",
+        
+        "username": {
+          ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 30 && newData.val().matches(/^[a-zA-Z0-9_]+$/)"
+        },
+        "firstName": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+        },
+        "lastName": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val() === auth.token.email"
+        },
+        "gender": {
+          ".validate": "newData.isString() && (newData.val() === 'male' || newData.val() === 'female' || newData.val() === 'non-binary' || newData.val() === 'prefer-not-to-say')"
+        },
+        "photoURL": {
+          ".validate": "newData.isString()"
+        },
+        "createdAt": {
+          ".validate": "newData.isString()"
+        },
+        "updatedAt": {
+          ".validate": "newData.isString()"
+        },
+        "stats": {
+          "wallpapersUploaded": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "totalViews": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "totalDownloads": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          }
+        },
+        // Prevent additional fields
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+
+    // Public wallpapers collection - read by all, managed by admins
+    "wallpapers": {
+      ".read": true,
+      
+      "$wallpaperId": {
+        // Admins can write everything
+        ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+        
+        // Validate wallpaper structure (only for new entries)
+        ".validate": "!data.exists() || newData.hasChildren(['title', 'imageUrl', 'category', 'resolution', 'tags', 'uploadedBy', 'createdAt'])",
+        
+        "title": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 100"
+        },
+        "imageUrl": {
+          ".validate": "newData.isString() && newData.val().beginsWith('https://')"
+        },
+        "category": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+        },
+        "resolution": {
+          ".validate": "newData.isString() && newData.val().matches(/^(HD|FHD|2K|4K|8K|\\d+x\\d+)$/)"
+        },
+        "tags": {
+          ".validate": "newData.hasChildren()",
+          "$index": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 30"
+          }
+        },
+        "uploadedBy": {
+          ".validate": "newData.isString()"
+        },
+        "author": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+        },
+        "downloads": {
+          ".validate": "newData.isNumber() && newData.val() >= 0",
+          ".write": "auth != null" // Allow any authenticated user to update download count
+        },
+        "views": {
+          ".validate": "newData.isNumber() && newData.val() >= 0",
+          ".write": "auth != null" // Allow any authenticated user to update view count
+        },
+        "featured": {
+          ".validate": "newData.isBoolean()"
+        },
+        "createdAt": {
+          ".validate": "newData.isString()"
+        },
+        "updatedAt": {
+          ".validate": "newData.isString()"
+        },
+        // Prevent additional fields
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+
+    // User uploads - wallpapers pending approval
+    "userUploads": {
+      // Allow public read access for approved wallpapers (for homepage)
+      ".read": "true",
+      
+      "$uid": {
+        // Users can write to their own uploads, anyone can update counters
+        ".write": "$uid === auth.uid || (auth != null && (newData.child('downloads').val() != data.child('downloads').val() || newData.child('views').val() != data.child('views').val()))",
+        
+        "$uploadId": {
+          // Allow upload - basic validation only
+          
+          "title": {
+            ".validate": "newData.isString() && newData.val().length >= 1"
+          },
+          "imageUrl": {
+            ".validate": "newData.isString() && newData.val().length >= 1"
+          },
+          "category": {
+            ".validate": "newData.isString() && newData.val().length >= 1"
+          },
+          "tags": {
+            ".validate": "true" // Allow any tags format
+          },
+          "status": {
+            ".validate": "newData.isString()"
+          },
+          "uploadDate": {
+            ".validate": "newData.isString()"
+          },
+          "approvedAt": {
+            ".validate": "newData.isString()"
+          },
+          "approvedBy": {
+            ".validate": "newData.isString()"
+          },
+          "rejectionReason": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
+          },
+          "views": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "downloads": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "s3Key": {
+            ".validate": "newData.isString()"
+          },
+          "author": {
+            ".validate": "newData.isString()"
+          },
+          "authorId": {
+            ".validate": "newData.isString()"
+          }
+          // Allow additional fields for flexibility
+        }
+      }
+    },
+
+    // User favorites
+    "favorites": {
+      "$uid": {
+        // Users can only access their own favorites
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        
+        "$wallpaperId": {
+          // Validate favorite structure
+          ".validate": "newData.hasChildren(['wallpaperId', 'favoriteDate'])",
+          
+          "wallpaperId": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "favoriteDate": {
+            ".validate": "newData.isString()"
+          },
+          "title": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 100"
+          },
+          "imageUrl": {
+            ".validate": "newData.isString() && newData.val().beginsWith('https://')"
+          },
+          "category": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+          },
+          "author": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+          },
+          // Prevent additional fields
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+
+    // Categories - read by all, managed by admins
+    "categories": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+      
+      "$categoryId": {
+        // Validate category structure
+        ".validate": "newData.hasChildren(['name', 'slug', 'description'])",
+        
+        "name": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+        },
+        "slug": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50 && newData.val().matches(/^[a-z0-9-]+$/)"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "thumbnailUrl": {
+          ".validate": "newData.isString() && newData.val().beginsWith('https://')"
+        },
+        "wallpaperCount": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "color": {
+          ".validate": "newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6}$/)"
+        },
+        "featured": {
+          ".validate": "newData.isBoolean()"
+        },
+        "order": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        // Prevent additional fields
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+
+    // Download tracking
+    "downloads": {
+      "$wallpaperId": {
+        ".read": true,
+        ".write": true, // Allow anyone to track downloads
+        
+        "$downloadId": {
+          "userId": {
+            ".validate": "newData.isString()"
+          },
+          "downloadDate": {
+            ".validate": "newData.isString()"
+          },
+          "userAgent": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
+          },
+          "ipAddress": {
+            ".validate": "newData.isString() && newData.val().length <= 45"
+          },
+          "anonymous": {
+            ".validate": "newData.isBoolean()"
+          }
+        }
+      }
+    },
+
+    // View tracking
+    "views": {
+      "$wallpaperId": {
+        ".read": true,
+        ".write": true, // Allow anyone to track views (including anonymous users)
+        
+        "$viewId": {
+          "userId": {
+            ".validate": "newData.isString()"
+          },
+          "viewDate": {
+            ".validate": "newData.isString()"
+          },
+          "userAgent": {
+            ".validate": "newData.isString() && newData.val().length <= 500"
+          },
+          "ipAddress": {
+            ".validate": "newData.isString() && newData.val().length <= 45"
+          }
+        }
+      }
+    },
+
+    // Admin users list
+    "admins": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+      
+      "$uid": {
+        ".validate": "newData.isBoolean() && newData.val() === true"
+      }
+    },
+
+    // App settings and configuration
+    "settings": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+      
+      "featuredWallpapers": {
+        ".validate": "newData.hasChildren()",
+        "$index": {
+          ".validate": "newData.isString()"
+        }
+      },
+      "maxUploadsPerUser": {
+        ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000"
+      },
+      "allowedFileTypes": {
+        ".validate": "newData.hasChildren()",
+        "$index": {
+          ".validate": "newData.isString() && newData.val().matches(/^\\.(jpg|jpeg|png|webp)$/)"
+        }
+      },
+      "maxFileSize": {
+        ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 52428800"
+      },
+      "maintenanceMode": {
+        ".validate": "newData.isBoolean()"
+      },
+      "announcementBanner": {
+        "enabled": {
+          ".validate": "newData.isBoolean()"
+        },
+        "message": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "type": {
+          ".validate": "newData.isString() && (newData.val() === 'info' || newData.val() === 'warning' || newData.val() === 'success' || newData.val() === 'error')"
+        }
+      }
+    },
+
+    // Search terms and analytics
+    "searchAnalytics": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": "auth != null",
+      
+      "$searchId": {
+        "query": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 100"
+        },
+        "userId": {
+          ".validate": "newData.isString()"
+        },
+        "timestamp": {
+          ".validate": "newData.isString()"
+        },
+        "resultsCount": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        }
+      }
+    },
+
+    // Reports and feedback
+    "reports": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": "auth != null",
+      
+      "$reportId": {
+        "wallpaperId": {
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        "reportedBy": {
+          ".validate": "newData.isString() && newData.val() === auth.uid"
+        },
+        "reason": {
+          ".validate": "newData.isString() && (newData.val() === 'copyright' || newData.val() === 'inappropriate' || newData.val() === 'spam' || newData.val() === 'other')"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 1000"
+        },
+        "status": {
+          ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'reviewed' || newData.val() === 'resolved')"
+        },
+        "reportDate": {
+          ".validate": "newData.isString()"
+        },
+        "reviewedBy": {
+          ".validate": "newData.isString()"
+        },
+        "reviewDate": {
+          ".validate": "newData.isString()"
+        }
+      }
+    },
+
+    // User activity logs (for admin monitoring)
+    "userActivity": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+      ".write": "auth != null",
+      
+      "$activityId": {
+        "userId": {
+          ".validate": "newData.isString() && newData.val() === auth.uid"
+        },
+        "action": {
+          ".validate": "newData.isString() && (newData.val() === 'login' || newData.val() === 'logout' || newData.val() === 'upload' || newData.val() === 'download' || newData.val() === 'favorite' || newData.val() === 'search')"
+        },
+        "timestamp": {
+          ".validate": "newData.isString()"
+        },
+        "metadata": {
+          ".validate": "newData.hasChildren()"
+        }
+      }
+    },
+
+    // Download counters for analytics
+    "downloadCounters": {
+      ".read": true,
+      ".write": true, // Allow anyone to increment counters
+      
+      "$wallpaperId": {
+        "total": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "daily": {
+          "$date": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          }
+        },
+        "monthly": {
+          "$month": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          }
+        },
+        "lastUpdated": {
+          ".validate": "newData.isString()"
+        }
+      }
+    },
+
+    // Prevent any other top-level nodes
+    "$other": {
+      ".validate": false
+    }
+  }
+}
